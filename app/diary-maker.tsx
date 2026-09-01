@@ -186,7 +186,22 @@ export function DiaryMaker() {
     columns.forEach((characters, column) => characters.forEach((character, row) => {
       const x = left + width - (column + 0.5) * columnWidth;
       const y = top + (row + 0.5) * rowHeight;
-      ctx.fillText(character, x, y);
+      if (character === '。') {
+        const metrics = ctx.measureText(character);
+        const punctuationX = x + columnWidth * 0.27;
+        const punctuationY = y - rowHeight * 0.27;
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(
+          character,
+          punctuationX - (metrics.actualBoundingBoxRight - metrics.actualBoundingBoxLeft) / 2,
+          punctuationY + (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2,
+        );
+        ctx.restore();
+      } else {
+        ctx.fillText(character, x, y);
+      }
     }));
     ctx.restore();
   }
