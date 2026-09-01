@@ -30,6 +30,7 @@ const TEXT_COLUMNS = 10;
 const TEXT_ROWS = 15;
 const TEXT_TOP = 68;
 const TEXT_BOTTOM = 34;
+const VERTICAL_PROLONGED_SOUND_MARKS = new Set(['ー', 'ｰ']);
 
 function layoutVerticalText(value: string) {
   const columns = Array.from({ length: TEXT_COLUMNS }, () => [] as string[]);
@@ -186,7 +187,13 @@ export function DiaryMaker() {
     columns.forEach((characters, column) => characters.forEach((character, row) => {
       const x = left + width - (column + 0.5) * columnWidth;
       const y = top + (row + 0.5) * rowHeight;
-      if (character === '。') {
+      if (VERTICAL_PROLONGED_SOUND_MARKS.has(character)) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.PI / 2);
+        ctx.fillText(character, 0, 0);
+        ctx.restore();
+      } else if (character === '。') {
         const metrics = ctx.measureText(character);
         const punctuationX = x + columnWidth * 0.27;
         const punctuationY = y - rowHeight * 0.27;
