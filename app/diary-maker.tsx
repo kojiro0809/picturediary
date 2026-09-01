@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { CalendarDays, Cloud, Download, ImagePlus, Move, RotateCcw, Sparkles, Sun, Umbrella } from 'lucide-react';
+import { CalendarDays, Cloud, Download, ImagePlus, Move, RotateCcw, Sun, Umbrella } from 'lucide-react';
 import NextImage from 'next/image';
 
 import { Button } from '@/components/ui/button';
@@ -18,8 +18,42 @@ const weatherOptions: { id: Weather; label: string; Icon: typeof Sun }[] = [
   { id: 'cloudy', label: 'くもり', Icon: Cloud },
 ];
 
-const guideLines = Array.from({ length: 10 });
+const CANVAS_WIDTH = 1200;
+const CANVAS_HEIGHT = 1800;
+const PAGE_MARGIN = 88;
+const INNER_WIDTH = CANVAS_WIDTH - PAGE_MARGIN * 2;
+const INNER_HEIGHT = CANVAS_HEIGHT - PAGE_MARGIN * 2;
 const PHOTO_HEIGHT = 54;
+const PHOTO_HEIGHT_PX = Math.round((INNER_HEIGHT * PHOTO_HEIGHT) / 100);
+const WRITING_HEIGHT_PX = INNER_HEIGHT - PHOTO_HEIGHT_PX;
+const META_WIDTH = 116;
+const TEXT_COLUMNS = 10;
+const TEXT_ROWS = 15;
+const TEXT_TOP = 68;
+const TEXT_BOTTOM = 34;
+const guideLines = Array.from({ length: TEXT_COLUMNS });
+
+function layoutVerticalText(value: string) {
+  const columns = Array.from({ length: TEXT_COLUMNS }, () => [] as string[]);
+  let column = 0;
+  let row = 0;
+  for (const character of Array.from(value)) {
+    if (character === '\n') {
+      column += 1;
+      row = 0;
+      if (column >= TEXT_COLUMNS) break;
+      continue;
+    }
+    if (row >= TEXT_ROWS) {
+      column += 1;
+      row = 0;
+    }
+    if (column >= TEXT_COLUMNS) break;
+    columns[column].push(character);
+    row += 1;
+  }
+  return columns;
+}
 
 function todayInputValue() {
   const now = new Date();
@@ -135,52 +169,42 @@ export function DiaryMaker() {
     drag.current = null;
   }
 
-  function drawVerticalText(ctx: CanvasRenderingContext2D, value: string, right: number, top: number, bottom: number) {
+  function drawVerticalText(ctx: CanvasRenderingContext2D, value: string, left: number, top: number, width: number, height: number) {
     const fontSize = 41;
-    const stepY = 54;
-    const stepX = 63;
-    const maxRows = Math.max(1, Math.floor((bottom - top) / stepY));
-    let column = 0;
-    let row = 0;
+    const columns = layoutVerticalText(value);
+    const columnWidth = width / TEXT_COLUMNS;
+    const rowHeight = height / TEXT_ROWS;
     ctx.save();
     ctx.fillStyle = '#27231f';
     const diaryFont = getComputedStyle(document.documentElement).getPropertyValue('--font-diary').trim();
     ctx.font = `700 ${fontSize}px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    for (const char of Array.from(value)) {
-      if (char === '\n' || row >= maxRows) {
-        column += 1;
-        row = 0;
-        if (char === '\n') continue;
-      }
-      if (column >= 10) break;
-      const x = right - column * stepX;
-      if (x < 110) break;
-      const y = top + row * stepY + fontSize / 2;
-      ctx.fillText(char, x, y);
-      row += 1;
-    }
+    columns.forEach((characters, column) => characters.forEach((character, row) => {
+      const x = left + width - (column + 0.5) * columnWidth;
+      const y = top + (row + 0.5) * rowHeight;
+      ctx.fillText(character, x, y);
+    }));
     ctx.restore();
   }
 
   function renderCanvas() {
     const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 1600;
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas is unavailable');
 
     ctx.fillStyle = '#fffefa';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const margin = 88;
+    const margin = PAGE_MARGIN;
     const innerX = margin;
     const innerY = margin;
     const innerW = canvas.width - margin * 2;
     const innerH = canvas.height - margin * 2;
-    const photoH = Math.round((innerH * PHOTO_HEIGHT) / 100);
-    const metaW = 116;
+    const photoH = PHOTO_HEIGHT_PX;
+    const metaW = META_WIDTH;
     const writingTop = innerY + photoH;
 
     ctx.save();
@@ -223,7 +247,7 @@ export function DiaryMaker() {
     }
     ctx.stroke();
 
-    drawVerticalText(ctx, text, innerX + innerW - metaW - 36, writingTop + 68, innerY + innerH - 28);
+    drawVerticalText(ctx, text, innerX, writingTop + TEXT_TOP, innerW - metaW, innerH - photoH - TEXT_TOP - TEXT_BOTTOM);
 
     const metaCenter = innerX + innerW - metaW / 2;
     ctx.fillStyle = '#27231f';
@@ -273,11 +297,24 @@ export function DiaryMaker() {
     }
   }
 
-  const imageStyle = photoUrl
-    ? {
-        transform: `scale(${zoom}) translate(${(positionX / Math.max(zoom, 1)) * 0.35}%, ${(positionY / Math.max(zoom, 1)) * 0.35}%)`,
-      }
-    : undefined;
+  const photoPlacement = photoImage ? (() => {
+    const frameAspect = INNER_WIDTH / PHOTO_HEIGHT_PX;
+    const imageAspect = photoImage.naturalWidth / photoImage.naturalHeight;
+    const baseWidth = imageAspect >= frameAspect ? (imageAspect / frameAspect) * 100 : 100;
+    const baseHeight = imageAspect >= frameAspect ? 100 : (frameAspect / imageAspect) * 100;
+    const width = baseWidth * zoom;
+    const height = baseHeight * zoom;
+    const travelX = Math.abs(width - 100) / 2;
+    const travelY = Math.abs(height - 100) / 2;
+    return {
+      width,
+      height,
+      left: 50 + (positionX / 100) * travelX,
+      top: 50 + (positionY / 100) * travelY,
+    };
+  })() : null;
+
+  const textColumns = layoutVerticalText(text || 'ここに文章が入ります');
 
   function renderPhotoCropFrame(compact = false) {
     return (
@@ -289,7 +326,16 @@ export function DiaryMaker() {
         onPointerCancel={endDrag}
       >
         {photoUrl ? (
-          <NextImage src={photoUrl} alt="選択した写真" draggable={false} fill unoptimized className="select-none object-cover will-change-transform" style={imageStyle} />
+          <NextImage
+            src={photoUrl}
+            alt="選択した写真"
+            draggable={false}
+            width={photoImage?.naturalWidth || 1}
+            height={photoImage?.naturalHeight || 1}
+            unoptimized
+            className="absolute max-w-none select-none will-change-transform"
+            style={{ width: `${photoPlacement?.width ?? 100}%`, height: `${photoPlacement?.height ?? 100}%`, left: `${photoPlacement?.left ?? 50}%`, top: `${photoPlacement?.top ?? 50}%`, transform: 'translate(-50%, -50%)' }}
+          />
         ) : (
           <button onClick={() => fileInput.current?.click()} className="relative z-10 p-4">
             <ImagePlus className="mx-auto mb-2 size-8" strokeWidth={1.5} />
@@ -303,30 +349,26 @@ export function DiaryMaker() {
 
   return (
     <main className="min-h-dvh bg-[#f6f1e7] pb-24 text-[#312d27] lg:pb-8">
-      <header className="sticky top-0 z-30 border-b border-[#ded3c3] bg-[#fffdf8]/92 backdrop-blur-lg">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-2xl bg-[#e76f51] text-white shadow-sm"><Sparkles className="size-5" /></span>
-            <div><h1 className="font-heading text-lg font-bold tracking-tight">まいにち絵日記</h1><p className="text-xs text-[#81786c]">写真から、今日の一枚を。</p></div>
-          </div>
-          <Button onClick={saveDiary} disabled={saving} className="hidden h-10 rounded-xl bg-[#315c50] px-4 text-white shadow-sm hover:bg-[#264b42] sm:flex"><Download className="size-4" />{saving ? '作成中…' : '写真に保存'}</Button>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-6xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-8">
+      <div className="mx-auto grid max-w-6xl gap-5 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-8">
         <section aria-label="絵日記のプレビュー" className="order-1 min-w-0">
           <div className="mb-3 flex items-end justify-between">
             <div><p className="text-xs font-bold tracking-[0.18em] text-[#a55b46]">PREVIEW</p><h2 className="mt-1 text-lg font-bold">できあがりイメージ</h2></div>
             <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-[#81786c]">写真はドラッグで移動</span>
           </div>
 
-          <div className="mx-auto aspect-[3/4] w-full max-w-[570px] overflow-hidden rounded-[4px] bg-[#fffefa] p-[7%] shadow-[0_18px_50px_rgba(78,61,40,.15)] ring-1 ring-black/5">
+          <div className="mx-auto aspect-[2/3] w-full max-w-[570px] overflow-hidden rounded-[4px] bg-[#fffefa] p-[7.33%] shadow-[0_18px_50px_rgba(78,61,40,.15)] ring-1 ring-black/5">
             <div className="grid h-full border border-[#8f8a82]" style={{ gridTemplateRows: `${PHOTO_HEIGHT}% ${100 - PHOTO_HEIGHT}%` }}>
               {renderPhotoCropFrame()}
-              <div className="grid min-h-0 grid-cols-[1fr_56px] border-t border-[#8f8a82]">
+              <div className="grid min-h-0 border-t border-[#8f8a82]" style={{ gridTemplateColumns: `minmax(0, 1fr) ${(META_WIDTH / INNER_WIDTH) * 100}%` }}>
                 <div className="relative grid grid-cols-10 overflow-hidden">
                   {guideLines.map((_, index) => <span key={index} className="border-r border-[#b7b2aa] last:border-r-0" />)}
-                  <p className="absolute bottom-[9%] right-[2.2%] top-[11%] max-w-[96%] overflow-hidden font-bold [writing-mode:vertical-rl] text-[clamp(15px,3vw,24px)] leading-[1.72] tracking-[0.1em]">{text || 'ここに文章が入ります'}</p>
+                  <div className="absolute inset-x-0 grid grid-cols-10" style={{ top: `${(TEXT_TOP / WRITING_HEIGHT_PX) * 100}%`, bottom: `${(TEXT_BOTTOM / WRITING_HEIGHT_PX) * 100}%` }}>
+                    {[...textColumns].reverse().map((characters, column) => (
+                      <div key={column} className="grid min-h-0 place-items-center font-bold" style={{ gridTemplateRows: `repeat(${TEXT_ROWS}, minmax(0, 1fr))`, fontSize: 'min(3.42vw, 20px)' }}>
+                        {characters.map((character, row) => <span key={`${character}-${row}`} className="block leading-none [writing-mode:horizontal-tb]">{character === ' ' ? '\u00a0' : character}</span>)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex flex-col items-center overflow-hidden border-l border-[#8f8a82] pb-[8%] pt-[17%] text-[clamp(11px,2.2vw,16px)] font-bold">
                   <CalendarDays className="mb-2 size-4 shrink-0 text-[#716a61]" />
@@ -339,18 +381,19 @@ export function DiaryMaker() {
               </div>
             </div>
           </div>
-          <p className="mx-auto mt-3 max-w-[570px] text-center text-xs leading-5 text-[#81786c]">保存画像は高画質の縦長PNG（1200 × 1600px）です</p>
+          <p className="mx-auto mt-3 max-w-[570px] text-center text-xs leading-5 text-[#81786c]">保存画像は高画質の縦長PNG（1200 × 1800px）です</p>
         </section>
 
         <aside className="order-2 h-fit rounded-3xl border border-[#dfd4c3] bg-[#fffdf8] p-5 shadow-[0_8px_30px_rgba(78,61,40,.08)] lg:sticky lg:top-24">
           <p className="text-xs font-bold tracking-[0.18em] text-[#a55b46]">EDIT</p>
           <h2 className="mb-5 mt-1 text-lg font-bold">絵日記をつくる</h2>
+          <Button onClick={saveDiary} disabled={saving} className="mb-5 hidden h-12 w-full rounded-2xl bg-[#315c50] text-base text-white shadow-sm hover:bg-[#264b42] sm:flex"><Download className="size-5" />{saving ? '作成中…' : '写真に保存'}</Button>
           <div className="space-y-5">
             <label htmlFor="diary-date" className="block"><span className="mb-2 block text-sm font-bold">日付</span><Input id="diary-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-11 rounded-xl border-[#d8cdbc] bg-white" /></label>
             <fieldset><legend className="mb-2 text-sm font-bold">天気</legend><div className="grid grid-cols-3 gap-2">
               {weatherOptions.map(({ id, label, Icon }) => <button key={id} type="button" onClick={() => setWeather(id)} aria-pressed={weather === id} className={`flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl border text-xs font-bold transition ${weather === id ? 'border-[#315c50] bg-[#e8f0ed] text-[#315c50] shadow-sm' : 'border-[#ddd2c2] bg-white text-[#70685e]'}`}><Icon className="size-4" />{label}</button>)}
             </div></fieldset>
-            <label htmlFor="diary-text" className="block"><span className="mb-2 flex items-center justify-between text-sm font-bold"><span>文章</span><span className="text-xs font-normal text-[#91897e]">{text.length}/160</span></span><Textarea id="diary-text" maxLength={160} value={text} onChange={(event) => setText(event.target.value)} className="min-h-28 resize-none rounded-xl border-[#d8cdbc] bg-white leading-7" placeholder="今日あったことを書いてみよう" /></label>
+            <label htmlFor="diary-text" className="block"><span className="mb-2 flex items-center justify-between text-sm font-bold"><span>文章</span><span className="text-xs font-normal text-[#91897e]">{text.length}/150</span></span><Textarea id="diary-text" maxLength={150} value={text} onChange={(event) => setText(event.target.value)} className="min-h-28 resize-none rounded-xl border-[#d8cdbc] bg-white leading-7" placeholder="今日あったことを書いてみよう" /></label>
             <div>
               <input ref={fileInput} type="file" accept="image/*" className="sr-only" onChange={choosePhoto} />
               <button type="button" onClick={() => fileInput.current?.click()} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#cbbda8] bg-[#fbf7ef] text-sm font-bold text-[#665d51] transition hover:bg-[#f4ecdf]"><ImagePlus className="size-5" />{photoUrl ? '写真を変更する' : '写真を選ぶ'}</button>
@@ -367,7 +410,7 @@ export function DiaryMaker() {
                 </DrawerHeader>
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
                   <div className="sticky top-0 z-10 -mx-4 bg-[#fffdf8] px-4 pb-4 pt-3">
-                    <div className="mx-auto w-full max-w-[560px]" style={{ aspectRatio: `1024 / ${(1424 * PHOTO_HEIGHT) / 100}` }}>
+                    <div className="mx-auto w-full max-w-[560px]" style={{ aspectRatio: `${INNER_WIDTH} / ${PHOTO_HEIGHT_PX}` }}>
                       {renderPhotoCropFrame(true)}
                     </div>
                   </div>
