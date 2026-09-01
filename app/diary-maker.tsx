@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { CalendarDays, Cloud, Download, ImagePlus, Move, RotateCcw, Sun, Umbrella } from 'lucide-react';
+import { useEffect, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { Cloud, Download, ImagePlus, Move, RotateCcw, Sun, Umbrella } from 'lucide-react';
 import NextImage from 'next/image';
 
 import { Button } from '@/components/ui/button';
@@ -25,13 +25,11 @@ const INNER_WIDTH = CANVAS_WIDTH - PAGE_MARGIN * 2;
 const INNER_HEIGHT = CANVAS_HEIGHT - PAGE_MARGIN * 2;
 const PHOTO_HEIGHT = 54;
 const PHOTO_HEIGHT_PX = Math.round((INNER_HEIGHT * PHOTO_HEIGHT) / 100);
-const WRITING_HEIGHT_PX = INNER_HEIGHT - PHOTO_HEIGHT_PX;
 const META_WIDTH = 116;
 const TEXT_COLUMNS = 10;
 const TEXT_ROWS = 15;
 const TEXT_TOP = 68;
 const TEXT_BOTTOM = 34;
-const guideLines = Array.from({ length: TEXT_COLUMNS });
 
 function layoutVerticalText(value: string) {
   const columns = Array.from({ length: TEXT_COLUMNS }, () => [] as string[]);
@@ -129,6 +127,7 @@ export function DiaryMaker() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const previewCanvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
 
   const formattedDateParts = formatJapaneseDateParts(date);
@@ -151,13 +150,13 @@ export function DiaryMaker() {
     image.src = url;
   }
 
-  function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
+  function startDrag(event: ReactPointerEvent<Element>) {
     if (!photoImage) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: event.clientX, y: event.clientY, startX: positionX, startY: positionY };
   }
 
-  function movePhoto(event: ReactPointerEvent<HTMLDivElement>) {
+  function movePhoto(event: ReactPointerEvent<Element>) {
     if (!drag.current) return;
     const nextX = drag.current.startX + (event.clientX - drag.current.x) * 0.7;
     const nextY = drag.current.startY + (event.clientY - drag.current.y) * 0.7;
@@ -268,6 +267,24 @@ export function DiaryMaker() {
     return canvas;
   }
 
+  useEffect(() => {
+    let active = true;
+    const drawPreview = () => {
+      if (!active || !previewCanvas.current) return;
+      const rendered = renderCanvas();
+      const preview = previewCanvas.current;
+      const context = preview.getContext('2d');
+      if (!context) return;
+      preview.width = CANVAS_WIDTH;
+      preview.height = CANVAS_HEIGHT;
+      context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      context.drawImage(rendered, 0, 0);
+    };
+    drawPreview();
+    void document.fonts.ready.then(drawPreview);
+    return () => { active = false; };
+  });
+
   async function saveDiary() {
     setSaving(true);
     try {
@@ -314,8 +331,6 @@ export function DiaryMaker() {
     };
   })() : null;
 
-  const textColumns = layoutVerticalText(text || 'ここに文章が入ります');
-
   function renderPhotoCropFrame(compact = false) {
     return (
       <div
@@ -347,6 +362,15 @@ export function DiaryMaker() {
     );
   }
 
+  function startPreviewDrag(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const relativeY = (event.clientY - bounds.top) / bounds.height;
+    const photoTop = PAGE_MARGIN / CANVAS_HEIGHT;
+    const photoBottom = (PAGE_MARGIN + PHOTO_HEIGHT_PX) / CANVAS_HEIGHT;
+    if (relativeY < photoTop || relativeY > photoBottom) return;
+    startDrag(event);
+  }
+
   return (
     <main className="min-h-dvh bg-[#f6f1e7] pb-24 text-[#312d27] lg:pb-8">
       <div className="mx-auto grid max-w-6xl gap-5 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-8">
@@ -356,30 +380,18 @@ export function DiaryMaker() {
             <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-[#81786c]">写真はドラッグで移動</span>
           </div>
 
-          <div className="mx-auto aspect-[2/3] w-full max-w-[570px] overflow-hidden rounded-[4px] bg-[#fffefa] p-[7.33%] shadow-[0_18px_50px_rgba(78,61,40,.15)] ring-1 ring-black/5">
-            <div className="grid h-full border border-[#8f8a82]" style={{ gridTemplateRows: `${PHOTO_HEIGHT}% ${100 - PHOTO_HEIGHT}%` }}>
-              {renderPhotoCropFrame()}
-              <div className="grid min-h-0 border-t border-[#8f8a82]" style={{ gridTemplateColumns: `minmax(0, 1fr) ${(META_WIDTH / INNER_WIDTH) * 100}%` }}>
-                <div className="relative grid grid-cols-10 overflow-hidden">
-                  {guideLines.map((_, index) => <span key={index} className="border-r border-[#b7b2aa] last:border-r-0" />)}
-                  <div className="absolute inset-x-0 grid grid-cols-10" style={{ top: `${(TEXT_TOP / WRITING_HEIGHT_PX) * 100}%`, bottom: `${(TEXT_BOTTOM / WRITING_HEIGHT_PX) * 100}%` }}>
-                    {[...textColumns].reverse().map((characters, column) => (
-                      <div key={column} className="grid min-h-0 place-items-center font-bold" style={{ gridTemplateRows: `repeat(${TEXT_ROWS}, minmax(0, 1fr))`, fontSize: 'min(3.42vw, 20px)' }}>
-                        {characters.map((character, row) => <span key={`${character}-${row}`} className="block leading-none [writing-mode:horizontal-tb]">{character === ' ' ? '\u00a0' : character}</span>)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-col items-center overflow-hidden border-l border-[#8f8a82] pb-[8%] pt-[17%] text-[clamp(11px,2.2vw,16px)] font-bold">
-                  <CalendarDays className="mb-2 size-4 shrink-0 text-[#716a61]" />
-                  <div className="flex min-h-0 flex-1 flex-col items-center gap-2">
-                    <span className="flex flex-col items-center leading-[1.34]">{formattedDateParts.map((part, index) => <span key={`${part}-${index}`} className={`block whitespace-nowrap ${part.startsWith('（') ? 'text-[0.7em] tracking-[-0.08em]' : ''}`}>{part}</span>)}</span>
-                    <span className="flex flex-col text-[11px] leading-tight"><span>天</span><span>気</span></span>
-                    {weatherOptions.map(({ id, Icon }) => id === weather ? <Icon key={id} className={`size-5 shrink-0 ${id === 'sunny' ? 'text-[#dc9a22]' : id === 'rainy' ? 'text-[#4a7198]' : 'text-[#7d8790]'}`} /> : null)}
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="relative mx-auto aspect-[2/3] w-full max-w-[570px] overflow-hidden rounded-[4px] bg-[#fffefa] shadow-[0_18px_50px_rgba(78,61,40,.15)] ring-1 ring-black/5">
+            <canvas
+              ref={previewCanvas}
+              aria-label="絵日記の完成プレビュー"
+              className={`block size-full touch-none ${photoImage ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              onPointerDown={startPreviewDrag}
+              onPointerMove={movePhoto}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            />
+            {!photoUrl && <button type="button" onClick={() => fileInput.current?.click()} className="absolute left-[7.33%] right-[7.33%] top-[4.89%] grid h-[48.7%] place-items-center bg-[#f1ede5] text-[#91897e]"><span><ImagePlus className="mx-auto mb-2 size-8" strokeWidth={1.5} /><span className="text-sm font-bold">タップして写真を選ぶ</span></span></button>}
+            {photoUrl && <span className="pointer-events-none absolute left-[9.5%] top-[47%] flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-bold text-white"><Move className="size-3" />指で動かせます</span>}
           </div>
           <p className="mx-auto mt-3 max-w-[570px] text-center text-xs leading-5 text-[#81786c]">保存画像は高画質の縦長PNG（1200 × 1800px）です</p>
         </section>
