@@ -35,21 +35,25 @@ function layoutVerticalText(value: string) {
   const columns = Array.from({ length: TEXT_COLUMNS }, () => [] as string[]);
   let column = 0;
   let row = 0;
-  for (const character of Array.from(value)) {
-    if (character === '\n') {
+
+  const manualLines = value.replace(/\r\n?/g, '\n').split('\n');
+  manualLines.forEach((line, lineIndex) => {
+    for (const character of Array.from(line)) {
+      if (row >= TEXT_ROWS) {
+        column += 1;
+        row = 0;
+      }
+      if (column >= TEXT_COLUMNS) return;
+      columns[column].push(character);
+      row += 1;
+    }
+
+    if (lineIndex < manualLines.length - 1) {
       column += 1;
       row = 0;
-      if (column >= TEXT_COLUMNS) break;
-      continue;
     }
-    if (row >= TEXT_ROWS) {
-      column += 1;
-      row = 0;
-    }
-    if (column >= TEXT_COLUMNS) break;
-    columns[column].push(character);
-    row += 1;
-  }
+  });
+
   return columns;
 }
 
@@ -405,7 +409,7 @@ export function DiaryMaker() {
             <fieldset><legend className="mb-2 text-sm font-bold">天気</legend><div className="grid grid-cols-3 gap-2">
               {weatherOptions.map(({ id, label, Icon }) => <button key={id} type="button" onClick={() => setWeather(id)} aria-pressed={weather === id} className={`flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl border text-xs font-bold transition ${weather === id ? 'border-[#315c50] bg-[#e8f0ed] text-[#315c50] shadow-sm' : 'border-[#ddd2c2] bg-white text-[#70685e]'}`}><Icon className="size-4" />{label}</button>)}
             </div></fieldset>
-            <label htmlFor="diary-text" className="block"><span className="mb-2 flex items-center justify-between text-sm font-bold"><span>文章</span><span className="text-xs font-normal text-[#91897e]">{text.length}/150</span></span><Textarea id="diary-text" maxLength={150} value={text} onChange={(event) => setText(event.target.value)} className="min-h-28 resize-none rounded-xl border-[#d8cdbc] bg-white leading-7" placeholder="今日あったことを書いてみよう" /></label>
+            <label htmlFor="diary-text" className="block"><span className="mb-2 flex items-center justify-between text-sm font-bold"><span>文章</span><span className="text-xs font-normal text-[#91897e]">{text.length}/150</span></span><Textarea id="diary-text" maxLength={150} value={text} onChange={(event) => setText(event.target.value)} className="min-h-28 resize-none rounded-xl border-[#d8cdbc] bg-white leading-7" placeholder="今日あったことを書いてみよう" /><span className="mt-2 block text-xs leading-5 text-[#81786c]">改行すると次の縦の列へ移り、下の部分は空白になります。</span></label>
             <div>
               <input ref={fileInput} type="file" accept="image/*" className="sr-only" onChange={choosePhoto} />
               <button type="button" onClick={() => fileInput.current?.click()} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#cbbda8] bg-[#fbf7ef] text-sm font-bold text-[#665d51] transition hover:bg-[#f4ecdf]"><ImagePlus className="size-5" />{photoUrl ? '写真を変更する' : '写真を選ぶ'}</button>
