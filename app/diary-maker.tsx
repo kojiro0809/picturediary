@@ -5,6 +5,7 @@ import { CalendarDays, Cloud, Download, ImagePlus, Move, RotateCcw, Sparkles, Su
 import NextImage from 'next/image';
 
 import { Button } from '@/components/ui/button';
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
@@ -135,15 +136,16 @@ export function DiaryMaker() {
   }
 
   function drawVerticalText(ctx: CanvasRenderingContext2D, value: string, right: number, top: number, bottom: number) {
-    const fontSize = 34;
-    const stepY = 48;
-    const stepX = 57;
+    const fontSize = 41;
+    const stepY = 54;
+    const stepX = 63;
     const maxRows = Math.max(1, Math.floor((bottom - top) / stepY));
     let column = 0;
     let row = 0;
     ctx.save();
     ctx.fillStyle = '#27231f';
-    ctx.font = `500 ${fontSize}px "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif`;
+    const diaryFont = getComputedStyle(document.documentElement).getPropertyValue('--font-diary').trim();
+    ctx.font = `700 ${fontSize}px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const char of Array.from(value)) {
@@ -152,6 +154,7 @@ export function DiaryMaker() {
         row = 0;
         if (char === '\n') continue;
       }
+      if (column >= 10) break;
       const x = right - column * stepX;
       if (x < 110) break;
       const y = top + row * stepY + fontSize / 2;
@@ -198,7 +201,8 @@ export function DiaryMaker() {
       ctx.fillStyle = '#f1ede5';
       ctx.fillRect(innerX, innerY, innerW, photoH);
       ctx.fillStyle = '#91897e';
-      ctx.font = '500 28px "Yu Gothic", sans-serif';
+      const diaryFont = getComputedStyle(document.documentElement).getPropertyValue('--font-diary').trim();
+      ctx.font = `700 30px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
       ctx.textAlign = 'center';
       ctx.fillText('ここに写真が入ります', canvas.width / 2, innerY + photoH / 2);
     }
@@ -219,16 +223,17 @@ export function DiaryMaker() {
     }
     ctx.stroke();
 
-    drawVerticalText(ctx, text, innerX + innerW - metaW - 34, writingTop + 28, innerY + innerH - 28);
+    drawVerticalText(ctx, text, innerX + innerW - metaW - 36, writingTop + 68, innerY + innerH - 28);
 
     const metaCenter = innerX + innerW - metaW / 2;
     ctx.fillStyle = '#27231f';
-    ctx.font = '500 26px "Yu Gothic", sans-serif';
+    const diaryFont = getComputedStyle(document.documentElement).getPropertyValue('--font-diary').trim();
+    ctx.font = `700 29px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
     ctx.textAlign = 'center';
     const dateChars = Array.from(formattedDate);
-    dateChars.forEach((char, index) => ctx.fillText(char, metaCenter, writingTop + 48 + index * 32));
-    const labelY = Math.min(innerY + innerH - 130, writingTop + 48 + dateChars.length * 32 + 26);
-    ctx.font = '500 21px "Yu Gothic", sans-serif';
+    dateChars.forEach((char, index) => ctx.fillText(char, metaCenter, writingTop + 72 + index * 36));
+    const labelY = Math.min(innerY + innerH - 130, writingTop + 72 + dateChars.length * 36 + 28);
+    ctx.font = `700 23px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
     ctx.fillText('天', metaCenter, labelY);
     ctx.fillText('気', metaCenter, labelY + 26);
     drawWeather(ctx, weather, metaCenter, innerY + innerH - 55, 56);
@@ -238,6 +243,7 @@ export function DiaryMaker() {
   async function saveDiary() {
     setSaving(true);
     try {
+      await document.fonts.ready;
       const canvas = renderCanvas();
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png', 1));
       if (!blob) throw new Error('画像を作成できませんでした');
@@ -269,6 +275,28 @@ export function DiaryMaker() {
       }
     : undefined;
 
+  function renderPhotoCropFrame(compact = false) {
+    return (
+      <div
+        className={`relative grid size-full touch-none place-items-center overflow-hidden bg-[#f2eee5] text-center text-[#91897e] ${photoImage ? 'cursor-grab active:cursor-grabbing' : ''} ${compact ? 'rounded-2xl border-2 border-[#8f8a82] shadow-[0_12px_30px_rgba(78,61,40,.15)]' : ''}`}
+        onPointerDown={startDrag}
+        onPointerMove={movePhoto}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        {photoUrl ? (
+          <NextImage src={photoUrl} alt="選択した写真" draggable={false} fill unoptimized className="select-none object-cover will-change-transform" style={imageStyle} />
+        ) : (
+          <button onClick={() => fileInput.current?.click()} className="relative z-10 p-4">
+            <ImagePlus className="mx-auto mb-2 size-8" strokeWidth={1.5} />
+            <p className="text-sm font-bold">タップして写真を選ぶ</p>
+          </button>
+        )}
+        {photoUrl && <span className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-bold text-white"><Move className="size-3" />指で動かせます</span>}
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-dvh bg-[#f6f1e7] pb-24 text-[#312d27] lg:pb-8">
       <header className="sticky top-0 z-30 border-b border-[#ded3c3] bg-[#fffdf8]/92 backdrop-blur-lg">
@@ -290,18 +318,19 @@ export function DiaryMaker() {
 
           <div className="mx-auto aspect-[3/4] w-full max-w-[570px] overflow-hidden rounded-[4px] bg-[#fffefa] p-[7%] shadow-[0_18px_50px_rgba(78,61,40,.15)] ring-1 ring-black/5">
             <div className="grid h-full border border-[#8f8a82]" style={{ gridTemplateRows: `${photoHeight}% ${100 - photoHeight}%` }}>
-              <div className={`relative grid touch-none place-items-center overflow-hidden bg-[#f2eee5] text-center text-[#91897e] ${photoImage ? 'cursor-grab active:cursor-grabbing' : ''}`} onPointerDown={startDrag} onPointerMove={movePhoto} onPointerUp={endDrag} onPointerCancel={endDrag}>
-                {photoUrl ? <NextImage src={photoUrl} alt="選択した写真" draggable={false} fill unoptimized className="select-none object-cover will-change-transform" style={imageStyle} /> : <button onClick={() => fileInput.current?.click()} className="relative z-10 p-4"><ImagePlus className="mx-auto mb-2 size-8" strokeWidth={1.5} /><p className="text-sm font-medium">タップして写真を選ぶ</p></button>}
-                {photoUrl && <span className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-bold text-white"><Move className="size-3" />ドラッグで位置調整</span>}
-              </div>
+              {renderPhotoCropFrame()}
               <div className="grid min-h-0 grid-cols-[1fr_56px] border-t border-[#8f8a82]">
                 <div className="relative grid grid-cols-10 overflow-hidden">
                   {guideLines.map((_, index) => <span key={index} className="border-r border-[#b7b2aa] last:border-r-0" />)}
-                  <p className="absolute inset-y-[4%] right-[2.4%] max-w-[96%] overflow-hidden [writing-mode:vertical-rl] text-[clamp(12px,2.5vw,20px)] leading-[2.1] tracking-[0.14em]">{text || 'ここに文章が入ります'}</p>
+                  <p className="absolute bottom-[4%] right-[2.2%] top-[11%] max-w-[96%] overflow-hidden font-bold [writing-mode:vertical-rl] text-[clamp(15px,3vw,24px)] leading-[1.8] tracking-[0.12em]">{text || 'ここに文章が入ります'}</p>
                 </div>
-                <div className="flex flex-col items-center overflow-hidden border-l border-[#8f8a82] py-[12%] text-[clamp(10px,2vw,14px)]">
+                <div className="flex flex-col items-center overflow-hidden border-l border-[#8f8a82] pb-[8%] pt-[17%] text-[clamp(11px,2.2vw,16px)] font-bold">
                   <CalendarDays className="mb-2 size-4 shrink-0 text-[#716a61]" />
-                  <div className="flex min-h-0 flex-1 items-center gap-2 [writing-mode:vertical-rl]"><span>{formattedDate}</span><span className="text-[10px]">天気</span>{weatherOptions.map(({ id, Icon }) => id === weather ? <Icon key={id} className={`size-5 shrink-0 ${id === 'sunny' ? 'text-[#dc9a22]' : id === 'rainy' ? 'text-[#4a7198]' : 'text-[#7d8790]'}`} /> : null)}</div>
+                  <div className="flex min-h-0 flex-1 flex-col items-center gap-2">
+                    <span className="flex flex-col items-center leading-[1.32]">{Array.from(formattedDate).map((char, index) => <span key={`${char}-${index}`} className="block">{char}</span>)}</span>
+                    <span className="flex flex-col text-[11px] leading-tight"><span>天</span><span>気</span></span>
+                    {weatherOptions.map(({ id, Icon }) => id === weather ? <Icon key={id} className={`size-5 shrink-0 ${id === 'sunny' ? 'text-[#dc9a22]' : id === 'rainy' ? 'text-[#4a7198]' : 'text-[#7d8790]'}`} /> : null)}
+                  </div>
                 </div>
               </div>
             </div>
@@ -323,13 +352,34 @@ export function DiaryMaker() {
               <button type="button" onClick={() => fileInput.current?.click()} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#cbbda8] bg-[#fbf7ef] text-sm font-bold text-[#665d51] transition hover:bg-[#f4ecdf]"><ImagePlus className="size-5" />{photoUrl ? '写真を変更する' : '写真を選ぶ'}</button>
             </div>
 
-            {photoUrl && <div className="space-y-4 rounded-2xl bg-[#f6f1e7] p-4">
-              <div className="flex items-center justify-between"><p className="text-sm font-bold">写真の微調整</p><button type="button" onClick={() => { setZoom(1); setPositionX(0); setPositionY(0); setPhotoHeight(54); }} className="flex items-center gap-1 text-xs font-bold text-[#846b5e]"><RotateCcw className="size-3" />リセット</button></div>
-              <div><span className="mb-2 flex justify-between text-xs"><span>大きさ</span><span>{Math.round(zoom * 100)}%</span></span><Slider aria-label="写真の大きさ" min={1} max={3} step={0.01} value={[zoom]} onValueChange={(value) => setZoom(typeof value === 'number' ? value : value[0])} /></div>
-              <div><span className="mb-2 flex justify-between text-xs"><span>左右の位置</span><span>{Math.round(positionX)}</span></span><Slider aria-label="写真の左右の位置" min={-100} max={100} step={1} value={[positionX]} onValueChange={(value) => setPositionX(typeof value === 'number' ? value : value[0])} /></div>
-              <div><span className="mb-2 flex justify-between text-xs"><span>上下の位置</span><span>{Math.round(positionY)}</span></span><Slider aria-label="写真の上下の位置" min={-100} max={100} step={1} value={[positionY]} onValueChange={(value) => setPositionY(typeof value === 'number' ? value : value[0])} /></div>
-              <div><span className="mb-2 flex justify-between text-xs"><span>写真欄の高さ</span><span>{photoHeight}%</span></span><Slider aria-label="写真欄の高さ" min={42} max={68} step={1} value={[photoHeight]} onValueChange={(value) => setPhotoHeight(typeof value === 'number' ? value : value[0])} /></div>
-            </div>}
+            {photoUrl && <Drawer showSwipeHandle>
+              <DrawerTrigger className="flex h-14 w-full items-center justify-between rounded-2xl bg-[#315c50] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#264b42]">
+                <span className="flex items-center gap-2"><Move className="size-5" />写真を見ながら調整</span><span className="rounded-full bg-white/15 px-2 py-1 text-[11px]">大きさ・位置</span>
+              </DrawerTrigger>
+              <DrawerContent className="[--drawer-height:94dvh] rounded-t-[28px] bg-[#fffdf8]">
+                <DrawerHeader className="px-5 text-left">
+                  <DrawerTitle className="text-xl font-bold">写真を見ながら調整</DrawerTitle>
+                  <DrawerDescription className="text-[#81786c]">写真は指で動かせます。下のつまみでも細かく調整できます。</DrawerDescription>
+                </DrawerHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
+                  <div className="sticky top-0 z-10 -mx-4 bg-[#fffdf8] px-4 pb-4 pt-3">
+                    <div className="mx-auto w-full max-w-[560px]" style={{ aspectRatio: `1024 / ${(1424 * photoHeight) / 100}` }}>
+                      {renderPhotoCropFrame(true)}
+                    </div>
+                  </div>
+                  <div className="mx-auto max-w-[560px] space-y-5 rounded-3xl bg-[#f6f1e7] p-5">
+                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>写真の大きさ</span><span>{Math.round(zoom * 100)}%</span></span><Slider aria-label="写真の大きさ" min={1} max={3} step={0.01} value={[zoom]} onValueChange={(value) => setZoom(typeof value === 'number' ? value : value[0])} /></div>
+                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>左右の位置</span><span>{Math.round(positionX)}</span></span><Slider aria-label="写真の左右の位置" min={-100} max={100} step={1} value={[positionX]} onValueChange={(value) => setPositionX(typeof value === 'number' ? value : value[0])} /></div>
+                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>上下の位置</span><span>{Math.round(positionY)}</span></span><Slider aria-label="写真の上下の位置" min={-100} max={100} step={1} value={[positionY]} onValueChange={(value) => setPositionY(typeof value === 'number' ? value : value[0])} /></div>
+                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>写真枠の高さ</span><span>{photoHeight}%</span></span><Slider aria-label="写真欄の高さ" min={42} max={68} step={1} value={[photoHeight]} onValueChange={(value) => setPhotoHeight(typeof value === 'number' ? value : value[0])} /></div>
+                    <button type="button" onClick={() => { setZoom(1); setPositionX(0); setPositionY(0); setPhotoHeight(54); }} className="mx-auto flex items-center gap-1.5 text-sm font-bold text-[#846b5e]"><RotateCcw className="size-4" />調整をリセット</button>
+                  </div>
+                </div>
+                <DrawerFooter className="border-t border-[#e5dac9] bg-[#fffdf8] px-4 py-3">
+                  <DrawerClose className="h-12 rounded-2xl bg-[#e76f51] text-base font-bold text-white">この位置で決定</DrawerClose>
+                </DrawerFooter>
+              </DrawerContent>
+            </Drawer>}
           </div>
         </aside>
       </div>

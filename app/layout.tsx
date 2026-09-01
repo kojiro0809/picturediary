@@ -1,5 +1,13 @@
 import type { Metadata } from 'next';
+import { Zen_Maru_Gothic } from 'next/font/google';
 import './globals.css';
+
+const diaryFont = Zen_Maru_Gothic({
+  weight: ['400', '700'],
+  variable: '--font-diary',
+  display: 'swap',
+  preload: false,
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://picturediary.vercel.app'),
@@ -23,5 +31,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ja"><body>{children}</body></html>;
+  return <html lang="ja" className={diaryFont.variable}><body>{children}</body></html>;
 }
