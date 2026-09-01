@@ -19,6 +19,7 @@ const weatherOptions: { id: Weather; label: string; Icon: typeof Sun }[] = [
 ];
 
 const guideLines = Array.from({ length: 10 });
+const PHOTO_HEIGHT = 54;
 
 function todayInputValue() {
   const now = new Date();
@@ -26,11 +27,11 @@ function todayInputValue() {
   return local.toISOString().slice(0, 10);
 }
 
-function formatJapaneseDate(value: string) {
+function formatJapaneseDateParts(value: string) {
   const date = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return [];
   const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-  return `${date.getMonth() + 1}月${date.getDate()}日（${weekdays[date.getDay()]}）`;
+  return [...Array.from(`${date.getMonth() + 1}月${date.getDate()}日`), `（${weekdays[date.getDay()]}）`];
 }
 
 function drawWeather(ctx: CanvasRenderingContext2D, weather: Weather, x: number, y: number, size: number) {
@@ -91,13 +92,12 @@ export function DiaryMaker() {
   const [zoom, setZoom] = useState(1);
   const [positionX, setPositionX] = useState(0);
   const [positionY, setPositionY] = useState(0);
-  const [photoHeight, setPhotoHeight] = useState(54);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const drag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
 
-  const formattedDate = formatJapaneseDate(date);
+  const formattedDateParts = formatJapaneseDateParts(date);
 
   function choosePhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -179,7 +179,7 @@ export function DiaryMaker() {
     const innerY = margin;
     const innerW = canvas.width - margin * 2;
     const innerH = canvas.height - margin * 2;
-    const photoH = Math.round((innerH * photoHeight) / 100);
+    const photoH = Math.round((innerH * PHOTO_HEIGHT) / 100);
     const metaW = 116;
     const writingTop = innerY + photoH;
 
@@ -187,19 +187,19 @@ export function DiaryMaker() {
     ctx.beginPath();
     ctx.rect(innerX, innerY, innerW, photoH);
     ctx.clip();
+    ctx.fillStyle = '#f1ede5';
+    ctx.fillRect(innerX, innerY, innerW, photoH);
     if (photoImage) {
       const baseScale = Math.max(innerW / photoImage.naturalWidth, photoH / photoImage.naturalHeight);
       const scale = baseScale * zoom;
       const drawW = photoImage.naturalWidth * scale;
       const drawH = photoImage.naturalHeight * scale;
-      const travelX = Math.max(0, (drawW - innerW) / 2);
-      const travelY = Math.max(0, (drawH - photoH) / 2);
+      const travelX = Math.abs(drawW - innerW) / 2;
+      const travelY = Math.abs(drawH - photoH) / 2;
       const centerX = innerX + innerW / 2 + (positionX / 100) * travelX;
       const centerY = innerY + photoH / 2 + (positionY / 100) * travelY;
       ctx.drawImage(photoImage, centerX - drawW / 2, centerY - drawH / 2, drawW, drawH);
     } else {
-      ctx.fillStyle = '#f1ede5';
-      ctx.fillRect(innerX, innerY, innerW, photoH);
       ctx.fillStyle = '#91897e';
       const diaryFont = getComputedStyle(document.documentElement).getPropertyValue('--font-diary').trim();
       ctx.font = `700 30px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
@@ -230,9 +230,13 @@ export function DiaryMaker() {
     const diaryFont = getComputedStyle(document.documentElement).getPropertyValue('--font-diary').trim();
     ctx.font = `700 29px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
     ctx.textAlign = 'center';
-    const dateChars = Array.from(formattedDate);
-    dateChars.forEach((char, index) => ctx.fillText(char, metaCenter, writingTop + 72 + index * 36));
-    const labelY = Math.min(innerY + innerH - 130, writingTop + 72 + dateChars.length * 36 + 28);
+    formattedDateParts.forEach((part, index) => {
+      ctx.font = part.startsWith('（')
+        ? `700 22px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`
+        : `700 29px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
+      ctx.fillText(part, metaCenter, writingTop + 72 + index * 38);
+    });
+    const labelY = Math.min(innerY + innerH - 130, writingTop + 72 + formattedDateParts.length * 38 + 28);
     ctx.font = `700 23px ${diaryFont || '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif'}`;
     ctx.fillText('天', metaCenter, labelY);
     ctx.fillText('気', metaCenter, labelY + 26);
@@ -317,17 +321,17 @@ export function DiaryMaker() {
           </div>
 
           <div className="mx-auto aspect-[3/4] w-full max-w-[570px] overflow-hidden rounded-[4px] bg-[#fffefa] p-[7%] shadow-[0_18px_50px_rgba(78,61,40,.15)] ring-1 ring-black/5">
-            <div className="grid h-full border border-[#8f8a82]" style={{ gridTemplateRows: `${photoHeight}% ${100 - photoHeight}%` }}>
+            <div className="grid h-full border border-[#8f8a82]" style={{ gridTemplateRows: `${PHOTO_HEIGHT}% ${100 - PHOTO_HEIGHT}%` }}>
               {renderPhotoCropFrame()}
               <div className="grid min-h-0 grid-cols-[1fr_56px] border-t border-[#8f8a82]">
                 <div className="relative grid grid-cols-10 overflow-hidden">
                   {guideLines.map((_, index) => <span key={index} className="border-r border-[#b7b2aa] last:border-r-0" />)}
-                  <p className="absolute bottom-[4%] right-[2.2%] top-[11%] max-w-[96%] overflow-hidden font-bold [writing-mode:vertical-rl] text-[clamp(15px,3vw,24px)] leading-[1.8] tracking-[0.12em]">{text || 'ここに文章が入ります'}</p>
+                  <p className="absolute bottom-[9%] right-[2.2%] top-[11%] max-w-[96%] overflow-hidden font-bold [writing-mode:vertical-rl] text-[clamp(15px,3vw,24px)] leading-[1.72] tracking-[0.1em]">{text || 'ここに文章が入ります'}</p>
                 </div>
                 <div className="flex flex-col items-center overflow-hidden border-l border-[#8f8a82] pb-[8%] pt-[17%] text-[clamp(11px,2.2vw,16px)] font-bold">
                   <CalendarDays className="mb-2 size-4 shrink-0 text-[#716a61]" />
                   <div className="flex min-h-0 flex-1 flex-col items-center gap-2">
-                    <span className="flex flex-col items-center leading-[1.32]">{Array.from(formattedDate).map((char, index) => <span key={`${char}-${index}`} className="block">{char}</span>)}</span>
+                    <span className="flex flex-col items-center leading-[1.34]">{formattedDateParts.map((part, index) => <span key={`${part}-${index}`} className={`block whitespace-nowrap ${part.startsWith('（') ? 'text-[0.7em] tracking-[-0.08em]' : ''}`}>{part}</span>)}</span>
                     <span className="flex flex-col text-[11px] leading-tight"><span>天</span><span>気</span></span>
                     {weatherOptions.map(({ id, Icon }) => id === weather ? <Icon key={id} className={`size-5 shrink-0 ${id === 'sunny' ? 'text-[#dc9a22]' : id === 'rainy' ? 'text-[#4a7198]' : 'text-[#7d8790]'}`} /> : null)}
                   </div>
@@ -363,16 +367,16 @@ export function DiaryMaker() {
                 </DrawerHeader>
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
                   <div className="sticky top-0 z-10 -mx-4 bg-[#fffdf8] px-4 pb-4 pt-3">
-                    <div className="mx-auto w-full max-w-[560px]" style={{ aspectRatio: `1024 / ${(1424 * photoHeight) / 100}` }}>
+                    <div className="mx-auto w-full max-w-[560px]" style={{ aspectRatio: `1024 / ${(1424 * PHOTO_HEIGHT) / 100}` }}>
                       {renderPhotoCropFrame(true)}
                     </div>
                   </div>
                   <div className="mx-auto max-w-[560px] space-y-5 rounded-3xl bg-[#f6f1e7] p-5">
-                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>写真の大きさ</span><span>{Math.round(zoom * 100)}%</span></span><Slider aria-label="写真の大きさ" min={1} max={3} step={0.01} value={[zoom]} onValueChange={(value) => setZoom(typeof value === 'number' ? value : value[0])} /></div>
+                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>写真の大きさ</span><span>{Math.round(zoom * 100)}%</span></span><Slider aria-label="写真の大きさ" min={0.45} max={3} step={0.01} value={[zoom]} onValueChange={(value) => setZoom(typeof value === 'number' ? value : value[0])} /></div>
                     <div><span className="mb-3 flex justify-between text-sm font-bold"><span>左右の位置</span><span>{Math.round(positionX)}</span></span><Slider aria-label="写真の左右の位置" min={-100} max={100} step={1} value={[positionX]} onValueChange={(value) => setPositionX(typeof value === 'number' ? value : value[0])} /></div>
                     <div><span className="mb-3 flex justify-between text-sm font-bold"><span>上下の位置</span><span>{Math.round(positionY)}</span></span><Slider aria-label="写真の上下の位置" min={-100} max={100} step={1} value={[positionY]} onValueChange={(value) => setPositionY(typeof value === 'number' ? value : value[0])} /></div>
-                    <div><span className="mb-3 flex justify-between text-sm font-bold"><span>写真枠の高さ</span><span>{photoHeight}%</span></span><Slider aria-label="写真欄の高さ" min={42} max={68} step={1} value={[photoHeight]} onValueChange={(value) => setPhotoHeight(typeof value === 'number' ? value : value[0])} /></div>
-                    <button type="button" onClick={() => { setZoom(1); setPositionX(0); setPositionY(0); setPhotoHeight(54); }} className="mx-auto flex items-center gap-1.5 text-sm font-bold text-[#846b5e]"><RotateCcw className="size-4" />調整をリセット</button>
+                    <p className="rounded-2xl bg-white/70 px-3 py-2 text-center text-xs leading-5 text-[#81786c]">100％より小さくすると、空いた部分は用紙の色になります。</p>
+                    <button type="button" onClick={() => { setZoom(1); setPositionX(0); setPositionY(0); }} className="mx-auto flex items-center gap-1.5 text-sm font-bold text-[#846b5e]"><RotateCcw className="size-4" />調整をリセット</button>
                   </div>
                 </div>
                 <DrawerFooter className="border-t border-[#e5dac9] bg-[#fffdf8] px-4 py-3">
